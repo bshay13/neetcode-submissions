@@ -1,7 +1,7 @@
 // Adds an AnkiWeb card for every NeetCode problem that appears in a push.
 // Usage (repo root): node .anki/sync.mjs [--dry-run]
 // Env: BEFORE, AFTER (push shas), SLUGS (comma list, overrides the diff),
-//      ANKIWEB_EMAIL, ANKIWEB_PASSWORD, ANTHROPIC_API_KEY (only for problems missing from cards.json).
+//      ANKIWEB_EMAIL, ANKIWEB_PASSWORD.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -9,12 +9,6 @@ import { pathToFileURL } from 'node:url';
 const ROOT = 'Data Structures & Algorithms';
 const DECK = 'NeetCode';
 const MAX_NEW = 15;
-const CATEGORIES = [
-  'Arrays & Hashing', 'Two Pointers', 'Sliding Window', 'Binary Search', 'Linked List', 'Stack',
-  'Trees', 'Tries', 'Backtracking', 'Heap / Priority Queue', 'Graphs', 'Advanced Graphs',
-  '1-D Dynamic Programming', '2-D Dynamic Programming', 'Greedy', 'Intervals', 'Bit Manipulation',
-  'Math & Geometry',
-];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const plain = (s) => String(s).replace(/[–—]/g, '-').trim();
@@ -49,46 +43,6 @@ export function detectSlugs({ before, after, cwd = process.cwd() }) {
     if (m) slugs.add(m[1]);
   }
   return [...slugs];
-}
-
-export function parseGenerated(text, slug) {
-  const m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error(`no JSON in model reply for "${slug}"`);
-  const obj = JSON.parse(m[0]);
-  if (obj.error) throw new Error(`model could not identify "${slug}": ${obj.error}`);
-  const card = { slug };
-  for (const k of ['name', 'category', 'time', 'space', 'trick']) {
-    if (typeof obj[k] !== 'string' || !obj[k].trim()) throw new Error(`model reply for "${slug}" is missing "${k}"`);
-    card[k] = plain(obj[k]);
-  }
-  return card;
-}
-
-export async function generate(slug, examples) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error(`no card text for "${slug}" and ANTHROPIC_API_KEY is not set`);
-  const prompt =
-    `You write Anki flashcard text for a NeetCode problem. The problem's URL slug is "${slug}" ` +
-    `(${problemUrl(slug)}). A slug can differ from the title, for example duplicate-integer is "Contains Duplicate".\n` +
-    `Reply with ONLY a JSON object with these string fields: name (the NeetCode problem title), ` +
-    `category (one of: ${CATEGORIES.join(' | ')} | Other), time and space (big-O of the OPTIMAL solution, ` +
-    `short), trick (one or two sentences naming the key insight, with the main alternative's complexity in ` +
-    `parentheses when useful). Optimal solution only. Use plain hyphens, never em dashes. ` +
-    `If you do not recognize the problem, reply {"error":"unknown problem"}.\n` +
-    `Style examples:\n${examples.map((e) => JSON.stringify(e)).join('\n')}`;
-  const res = await fetch(process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.ANKI_MODEL || 'claude-sonnet-5-5',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Anthropic API returned HTTP ${res.status} for "${slug}"`);
-  const data = await res.json();
-  const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  return parseGenerated(text, slug);
 }
 
 async function login(page) {
@@ -161,7 +115,7 @@ async function main() {
     return 1;
   }
   if (dryRun) {
-    for (const s of slugs) console.log(`${s}: ${table.has(s) ? 'card text in cards.json' : 'would generate card text'}`);
+    for (const s of slugs) console.log(`${s}: ${table.has(s) ? 'card text in cards.json' : 'MISSING from cards.json'}`);
     return 0;
   }
 
@@ -174,7 +128,6 @@ async function main() {
     const page = await (await browser.newContext()).newPage();
     page.setDefaultTimeout(30000);
     await login(page);
-    const examples = [...table.values()].slice(0, 3);
     for (const slug of slugs) {
       try {
         if (await existsInAnki(page, slug)) {
@@ -182,7 +135,8 @@ async function main() {
           console.log(`${slug}: already in Anki, skipped`);
           continue;
         }
-        const card = table.get(slug) ?? (await generate(slug, examples));
+        const card = table.get(slug);
+        if (!card) throw new Error('no card text in .anki/cards.json for this problem, add an entry and re-run');
         await addCard(page, card);
         let confirmed = false;
         for (let i = 0; i < 3 && !confirmed; i++) {
