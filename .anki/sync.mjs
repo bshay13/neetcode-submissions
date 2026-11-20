@@ -6,7 +6,6 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-const ROOT = 'Data Structures & Algorithms';
 const DECK = 'NeetCode';
 const MAX_NEW = 15;
 
@@ -15,12 +14,16 @@ const plain = (s) => String(s).replace(/[–—]/g, '-').trim();
 export const problemUrl = (slug) => `https://neetcode.io/problems/${slug}/question`;
 
 export function cardHtml(card) {
-  const url = problemUrl(card.slug);
+  const url = card.url ?? problemUrl(card.slug);
+  const rows = card.back ?? [
+    ['Time', card.time],
+    ['Space', card.space],
+    ['Category', card.category],
+    ['Trick', card.trick],
+  ];
   return {
     front: `${esc(card.name)}<br><a href="${url}">${url}</a>`,
-    back:
-      `<b>Time:</b> ${esc(card.time)}<br><b>Space:</b> ${esc(card.space)}<br>` +
-      `<b>Category:</b> ${esc(card.category)}<br><b>Trick:</b> ${esc(card.trick)}`,
+    back: rows.map(([label, text]) => `<b>${esc(label)}:</b> ${esc(text)}`).join('<br>'),
   };
 }
 
@@ -36,7 +39,8 @@ export function detectSlugs({ before, after, cwd = process.cwd() }) {
   } catch {
     out = git(['show', '--name-only', '-z', '--diff-filter=A', '--format=', after]);
   }
-  const re = new RegExp(`^${ROOT}/([^/]+)/submission-\\d+\\.[^/]+$`);
+  // <section folder>/<slug>/submission-N.<ext>. Dot folders (.anki, .github) never count.
+  const re = /^[^./][^/]*\/([^/]+)\/submission-\d+\.[^/]+$/;
   const slugs = new Set();
   for (const path of out.split('\0')) {
     const m = re.exec(path);
@@ -59,17 +63,18 @@ async function login(page) {
   }
 }
 
-async function existsInAnki(page, slug) {
+async function existsInAnki(page, url) {
+  const key = url.replace(/^https?:\/\//, '');
   await page.goto('https://ankiweb.net/search', { waitUntil: 'domcontentloaded' });
   const box = page.getByRole('textbox').first();
   await box.waitFor({ timeout: 30000 });
-  await box.fill(`deck:${DECK} "neetcode.io/problems/${slug}/question"`);
+  await box.fill(`deck:${DECK} "${key}"`);
   await Promise.all([
     page.waitForResponse((r) => r.url().includes('/svc/search/search'), { timeout: 30000 }),
     page.getByRole('button', { name: 'Search', exact: true }).click(),
   ]);
   await page.waitForTimeout(500);
-  const hit = page.locator('table tr').filter({ hasText: `neetcode.io/problems/${slug}/question` });
+  const hit = page.locator('table tr').filter({ hasText: key });
   return (await hit.count()) > 0;
 }
 
@@ -130,7 +135,8 @@ async function main() {
     await login(page);
     for (const slug of slugs) {
       try {
-        if (await existsInAnki(page, slug)) {
+        const url = table.get(slug)?.url ?? problemUrl(slug);
+        if (await existsInAnki(page, url)) {
           skipped.push(slug);
           console.log(`${slug}: already in Anki, skipped`);
           continue;
@@ -140,7 +146,7 @@ async function main() {
         await addCard(page, card);
         let confirmed = false;
         for (let i = 0; i < 3 && !confirmed; i++) {
-          confirmed = await existsInAnki(page, slug);
+          confirmed = await existsInAnki(page, url);
           if (!confirmed) await page.waitForTimeout(2000);
         }
         if (!confirmed) throw new Error('card was submitted but a search did not find it');

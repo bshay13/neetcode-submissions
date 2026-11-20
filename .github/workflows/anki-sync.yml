@@ -3,8 +3,9 @@ name: Anki sync
 on:
   push:
     branches: [main]
-    paths:
-      - 'Data Structures & Algorithms/**'
+    paths-ignore:
+      - '.anki/**'
+      - '.github/**'
   workflow_dispatch:
     inputs:
       slugs:

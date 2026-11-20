@@ -1,14 +1,19 @@
 # Anki sync
 
-Every push that adds a `Data Structures & Algorithms/<slug>/submission-N.*` file runs `.github/workflows/anki-sync.yml`.
+Every push that adds a `<section folder>/<slug>/submission-N.*` file runs `.github/workflows/anki-sync.yml`.
 For each problem slug in the push it:
 
 1. Logs in to AnkiWeb and searches the `NeetCode` deck for the problem's link. If a card exists, it skips.
 2. Otherwise adds a Basic card. Front: problem name and neetcode.io link. Back: time, space, trick, category.
 3. Searches again to confirm the card landed. The run fails if it did not.
 
-Card text comes from `cards.json`, which has an entry for every NeetCode 150 problem plus a few extras. No AI runs in the workflow.
-A problem that is not in `cards.json` fails with a clear message. Add an entry (slug, name, category, time, space, trick) and re-run.
+Card text comes from `cards.json`: every coding problem on NeetCode (the 1,097 with problem pages), the Machine Learning, Design Patterns, SQL and AI Coding problems, and the 19 System Design problems. No AI runs in the workflow.
+A problem that is not in `cards.json` fails with a clear message. Add an entry and re-run.
+
+- Coding cards: Back has Time, Space, Category, Trick.
+- Other sections: Back has Category, Key idea, How it works, Watch out. System Design cards link to systemdesignschool.io, as NeetCode does.
+- Slugs for manual runs: coding, ML, SQL and design patterns use the NeetCode slug. System Design uses `system-design-<id>` (for example `system-design-url-shortener`). AI Coding uses `ai-coding-<id>`.
+- `needs-review.txt` lists entries the writer was unsure about. The text was written by Claude from general knowledge, so skim any you plan to rely on.
 
 ## Secrets (repo Settings > Secrets and variables > Actions)
 
