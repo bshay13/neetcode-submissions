@@ -1,0 +1,47 @@
+name: Anki sync
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.anki/**'
+      - '.github/**'
+  workflow_dispatch:
+    inputs:
+      slugs:
+        description: 'Comma-separated problem slugs to sync (empty = use the push diff)'
+        required: false
+
+concurrency:
+  group: anki-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .anki/package-lock.json
+      - name: Install dependencies
+        working-directory: .anki
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Add new problems to AnkiWeb
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          SLUGS: ${{ inputs.slugs }}
+          ANKIWEB_EMAIL: ${{ secrets.ANKIWEB_EMAIL }}
+          ANKIWEB_PASSWORD: ${{ secrets.ANKIWEB_PASSWORD }}
+        run: node .anki/sync.mjs
