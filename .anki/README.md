@@ -1,5 +1,23 @@
 # Anki sync
 
+**Active path: the Anki desktop add-on** (below). The GitHub Action in `.github/workflows/anki-sync.yml` is disabled (`gh workflow disable "Anki sync"`) so only one system writes to the deck. It still works if you re-enable it.
+
+## Desktop add-on
+
+`addon/neetcode_cards/` is an Anki add-on. Each time Anki opens it waits for the first AnkiWeb sync, runs `git pull` on this repo's local clone, and adds a Basic card (deck `NeetCode`) for every committed problem that has none. Then it syncs again so the cards reach AnkiWeb. Manual run: Tools > NeetCode: add missing cards.
+
+Install (re-run after changing the add-on), then restart Anki:
+
+```bash
+cp -R .anki/addon/neetcode_cards ~/Library/Application\ Support/Anki2/addons21/
+```
+
+- The clone path is in the add-on's `config.json` (Tools > Add-ons > NeetCode cards > Config). Default `~/neetcode-anki/neetcode-submissions`. Keep the clone on `main`.
+- It adds nothing until a sync has finished, so a stale local collection never creates duplicates.
+- Anki must be signed in to AnkiWeb. If `git pull` fails (offline, no git credentials in Anki's environment), it uses the clone as it is.
+
+The sections below describe the GitHub Action path.
+
 Every push that adds a `<section folder>/<slug>/submission-N.*` file runs `.github/workflows/anki-sync.yml`.
 For each problem slug in the push it:
 
